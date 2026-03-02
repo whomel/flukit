@@ -1,5 +1,6 @@
 # Flukit - simple variant caller for influenza
 
+update version: 3.0.0
 Used interally at WHOFLUCC. Not recommended for external usage.
 
 ### install
@@ -16,6 +17,8 @@ cd flukit && python -m pip install .
 conda install -c bioconda nextclade
 ```
 
+please update the nextclade version into 3.14.0 to be compatible with the current updates.
+
 ### usage
 
 Run `flukit --help` to see detailed instructions
@@ -29,18 +32,29 @@ Run `flukit --help` to see detailed instructions
 Example:
 
 ```
-flukit -s flu.fasta -l h3n2 -b batch150 -o ~/Desktop/
+flukit tree -s flu.fasta -l h3n2 -b batch150 -o ~/Desktop/
 ```
+command variant is not available with current updates.
 
 - output
-	- tsv file in the following format:
+	- result.tsv file in the following format:
 	```
 	seqno - the fasta header
 	ha_aa - HA mutations called against vacc_ref
 	na - H275Y mutation
 	mp - S31N mutation
 	pa - I38X mutation
+	antiviral_resistant - list of all antiviral found
 	vacc_ref - called against ancestral strains
+ 	HA_clade - short clade name derived from nextclade
+ 	HA_subclade - subclade annotated by nextclade
 	```
+ 	- representative.tsv file in the following format:
+    ```
+    nearest_reference - representative virus to each sample
+    sample - the fasta header
+    ```
+    - phylogenetics.pdf contains the phylogenetics of each gene segments with the backbone.
+      blue color represents the sample and the red color represents the reference.
 
 Output is formatted specifically for internal database.
