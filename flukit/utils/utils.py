@@ -1,12 +1,14 @@
 import os
-import re
 import tempfile
 import numpy as np
+from rich import print
 from Bio import SeqIO, Seq, SeqRecord
 from collections import defaultdict
-from pandas import read_csv
+from pandas import read_csv, DataFrame
 from pathlib import Path
 from importlib_resources import files
+from typing import List, Set, Tuple, Union, Dict
+
 
 config_path = files('flukit').joinpath('config')
 
@@ -36,7 +38,7 @@ def load_features(reference, feature_names=None):
     return features
 
 
-def safe_translate(sequence, report_exceptions=False):
+def safe_translate(sequence, report_exceptions=False) -> str:
     """Returns an amino acid translation of the given nucleotide sequence accounting
     for gaps in the given sequence.
 
@@ -106,7 +108,7 @@ def safe_translate(sequence, report_exceptions=False):
     else:
         return translated_sequence
 
-def get_reference(input_lineage: str, input_gene: str) -> SeqRecord:
+def get_reference(input_lineage: str, input_gene: str) -> Tuple[str, SeqRecord.SeqRecord]:
     '''
     Parameters
         input_lineage : str
@@ -157,7 +159,7 @@ def read_in_mutations(lineage: str) -> dict:
 
     return(mutations)
 
-def write_fasta(sequences: list, output: Path = None) -> Path:
+def write_temp_fasta(sequences: List[SeqRecord.SeqRecord], output: Path = None) -> Path:
     '''
     Write out SeqIO.dict object to file and return location. 
     If path is None use temp file.
@@ -173,47 +175,36 @@ def write_fasta(sequences: list, output: Path = None) -> Path:
 
     return(file.name)
 
-def locate_fasta(dir: Path, match: list, batch_num: str = None) -> list:
-    '''
-    Match fasta files in a dir returning a list of full paths.
-    match is a list of seqno's eg ['N1000.4', 'N1000.6', ...]
-    '''
-    # individual fastas
-    if batch_num is None:
-        matched = [i + ".fasta" for i in match]
-        files = [file for file in dir.glob('*.fasta') if file.name in matched]
-
-    # mutlifasta search
-    if batch_num:
-        files = [file for file in dir.glob('*.fasta') if re.search(batch_num, file.name)]
-
-    # do check for output
-    if files:
-        return(files)
-    else:
-        raise AttributeError
-
-def read_meta(metadata: Path, column: str = None):
+def read_meta(meta_data: Path) -> DataFrame:
     '''
     wrapper function to safely read in fasta files and optionally return a specific column
 
     Return either pandas dataframe or list
     '''
-    if metadata.name.split('.')[1] == 'csv':
+    import pandas as pd
+    #from datetime import datetime
+    #dateparse = lambda x: datetime.strptime(x, '%d/%m/%Y')
+    def dateparse(date):
+            return pd.to_datetime(date, errors="raise", dayfirst=True)
+
+    if meta_data.name.split('.')[1] == 'csv':
         sep = ","
     else:
         sep = "\t"
 
     try:
-        meta = read_csv(metadata, sep = sep, na_filter=False)
-        if column:
-            print(column)
-            return(list(meta[column]))
-        else:
-            return(meta)
-
+        meta = pd.read_csv(
+            meta_data, 
+            infer_datetime_format = True, 
+            parse_dates = ['Sample Date'], 
+            date_parser=dateparse, 
+            dtype=str,
+            na_filter=False,
+            sep=sep,
+            )
+        return(meta)
     except OSError as error:
         raise OSError(f"File does not exist. Error: {error}")
-    except Exception as errpr:
+    except Exception as error:
         raise Exception(f"Uncontrolled error detected: Error: {error}")
  

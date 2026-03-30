@@ -1,30 +1,34 @@
-from shutil import copyfile
-from pandas import DataFrame
+import typer
 from rich import print
-from rich.progress import track
 from pathlib import Path
+from pandas import DataFrame
+from rich.progress import track
+from collections import defaultdict
+
 from .variants import get_ref, get_snps, get_ha_snps, get_pa_snps
 from .align_frames import align
-from .utils import write_fasta, read_meta, locate_fasta
+from .utils import write_temp_fasta, read_meta
 from .clades import run_nextclade, update_dataset
+from .rename import find_fasta, rename_fasta, write_sequences, write_meta, fuzee_get
 
-# process data
+segements_genes = {
+    '4' : 'HA',
+    '6' : 'NA',
+    '1' : 'PB2',
+    '2' : 'PB1',
+    '3' : 'PA',
+    '5' : 'NP',
+    '7' : 'MP',
+    '8' : 'NS',
+    }
+
 def call_variants(sequences: dict, lineage: str) -> tuple[DataFrame, list]:
-
     results = DataFrame.from_dict(
-        data = {
-            "ha_aa":[],
-            "NA":[],
-            "MP":[],
-            "PA":[],
-            "vacc_ref":[]
-            }, 
-            dtype=str
+        data = {"ha_aa":[],"NA":[],"MP":[],"PA":[],"vacc_ref":[]}, 
+        dtype='str'
             )
 
-    # List to write out ha sequences
     ha_records = []
-
     for record in track(sequences, description="Processing..."):
         gene = sequences[record].gene
         try:
@@ -60,13 +64,13 @@ def call_clades(
     ha_records: list, 
     lineage: str,
     output: Path = None,
-    update: bool = False):
+    update: bool = False) -> DataFrame:
     '''
     Call clades with nextclade. 
     The list of `sequences` are written to temp file for nextclade. 
     '''
 
-    ha_temp = write_fasta(ha_records)
+    ha_temp = write_temp_fasta(ha_records)
 
     if update:
         update_dataset(lineage)
@@ -74,51 +78,76 @@ def call_clades(
     tsv = run_nextclade(ha_temp, lineage, output)
     return(tsv)
 
-'''
-    --input-dir {Path} \
-    --input-meta {tsv or csv} \ 
-    --batch-num {num} \
-    --output-dir {Path} \
-    --split-by gene
-'''
 
-def find_fasta(
-    output_dir: Path = None,
-    batch_num: str = None, 
-    input_dir_new: Path = None,
-    input_dir_ngs: Path = None,
-    metadata: Path = None, 
-    gene: str = None
-    ):
-
+## work in progress - master function for calling directly
+def findrename(
+    input_dir: Path, 
+    input_meta: Path, 
+    output_dir: Path, 
+    split_by: str,
+    batch_num: str,
+    rename: bool,
+    ) -> None:
     '''
-    subcommand find 
+    Find and rename fasta files
+    rename if split_by is gene or multi else do not rename output as is
     '''
-
-
-    if metadata:
-        meta = read_meta(metadata, )
-        want = list(meta['seqno'])
+    
+    if batch_num and input_meta:
+        raise typer.BadParameter(f"specify either but not both: batch_num/input_meta")
+    if batch_num: # not implemented
+        meta = fuzee_get(batch_num)
     else:
-        # get metadata from fuzee api
-        pass
-    
-    # find fasta files
-    try:
-        fasta_files = locate_fasta(input_dir_new, want)
-    except AttributeError:
-        fasta_files = locate_fasta(input_dir_ngs, batch_num)
-        # split fasta
-            # read in fasta using Bio.SeqIO
-            # for each record in fasta file:
-                # with file open as f:
-                    # write fasta file to dest
-        # what is output?
-    
-    # copy files to output directory
-    for file in fasta_files:
-        copyfile(file, output_dir / file.name)
+        meta = read_meta(input_meta)
 
-    # more work here
+    seq_num = list(meta['Seq No'])
+    sequences, matched, unmatched = find_fasta(seq_num=seq_num, input_dir=input_dir)
 
+    if rename:
+        if split_by == "multi":
+            sequences_renamed = rename_fasta(
+                sequences=sequences, 
+                meta_data=meta, 
+                add_gene=True, 
+                add_month=True, 
+                add_passage=True
+            )
+        if split_by == "gene":
+            sequences_renamed = rename_fasta(
+                sequences=sequences, 
+                meta_data=meta, 
+                add_gene=False, 
+                add_month=True, 
+                add_passage=True
+                )
+    elif not rename:
+        if split_by == "gene":
+            sequences_renamed = defaultdict(list)
+            for seq in sequences:
+                segment = segements_genes[seq.id.split(".")[1]]
+                sequences_renamed[segment].append(seq)
+        if split_by == "multi":
+            sequences_renamed = sequences
+    else:
+        sequences_renamed = sequences
+
+    meta_matched = meta[ meta["Seq No"].isin(matched) ]
+    meta_unmatched = meta[ meta["Seq No"].isin(unmatched) ]
+
+    write_sequences(
+        sequences=sequences_renamed, 
+        output=output_dir, 
+        split_by=split_by
+        )
+    write_meta(
+        meta=meta_matched, 
+        output=output_dir / "meta_matched.tsv", 
+        split_by='multi'
+        )
+    if not meta_unmatched.empty:
+        write_meta(
+            meta=meta_unmatched, 
+            output=output_dir / "meta_unmatched.tsv", 
+            split_by='multi'
+            )
     
