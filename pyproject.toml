@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flukit"
+version = "0.0.2"
+description = "the influenza surveillance toolkit"
+authors = [{name = "Ammar Aziz", email = "ammar.aziz@mh.org.au"}]
+license = {text = "GPL3"}
+requires-python = ">=3.9.15"
+dependencies = [
+    "biopython==1.80",
+    "pandas",
+    "numpy",
+    "typer",
+    "rich",
+    "importlib_resources",
+]
+
+[project.scripts]
+flukit = "flukit.flukit:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["flukit*"]
+
+[tool.setuptools.package-data]
+flukit = ["config/*", "config/nextclade_datasets/**/*"]
